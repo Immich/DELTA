@@ -13,6 +13,12 @@ import cv2
 import numpy as np
 from PIL import Image
 
+modnet_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'body_video/submodules/MODNet/src'))
+sys.path.append(modnet_path)
+
+face_parsing_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'body_video/submodules/face-parsing.PyTorch'))
+sys.path.append(face_parsing_path)
+
 def plot_points(image, kpts, color = 'r'):
     ''' Draw 68 key points
     Args: 
@@ -162,6 +168,10 @@ def generate_image(inputpath, savepath, subject_name=None, crop=False, crop_each
                     DST_PTS = np.array([[0,0], [0,image_size - 1], [image_size - 1, 0]])
                     tform = estimate_transform('similarity', src_pts, DST_PTS)
                 dst_image = warp(image, tform.inverse, output_shape=(image_size, image_size))
+                dst_image = np.clip(dst_image, 0, 1)  # Clip values to range [0, 1] after warping
+                dst_image = (dst_image * 255).astype(np.uint8)  # Convert to uint8
+                #print("Data type after conversion to uint8:", dst_image.dtype)
+                assert dst_image.dtype == np.uint8, "Image data type must be uint8 before saving!"
                 imsave(os.path.join(savepath, f'{subject_name}_f{count:06d}.png'), dst_image)
             else:
                 
@@ -185,6 +195,7 @@ def generate_image(inputpath, savepath, subject_name=None, crop=False, crop_each
                 if h!=image_size or w!=image_size:
                     dst_image = resize(image, [image_size, image_size])
                     dst_image = (dst_image*255).astype(np.uint8)
+                    #print("Shape of dst_image 2:", dst_image.shape)
                     imsave(os.path.join(savepath, f'{subject_name}_f{count:06d}.png'), dst_image)
                 else:
                     shutil.copyfile(imagepath, os.path.join(savepath, f'{subject_name}_f{count:06d}.png'))
@@ -235,7 +246,9 @@ def generate_matting_rvm(inputpath, savepath, ckpt_path='assets/rvm/rvm_resnet50
 # better for portrait
 def generate_matting_MODNet(inputpath, savepath, ckpt_path='assets/MODNet/modnet_webcam_portrait_matting.ckpt', device='cuda:0'):
     sys.path.append('./submodules/MODNet')
-    from src.models.modnet import MODNet
+    # Simple import now that the path is set
+    from models.modnet import MODNet
+    ckpt_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../assets/MODNet/modnet_webcam_portrait_matting.ckpt.pth'))
     import torchvision.transforms as transforms
     import torch.nn as nn
     from PIL import Image
@@ -410,14 +423,16 @@ def generate_iris(inputpath, savepath, device='cuda:0', vis=False):
 def generate_face_parsing(inputpath, savepath, ckpt_path='assets/face_parsing/model.pth', device='cuda:0', vis=False):
     logger.info(f'generae face parsing')
     os.makedirs(savepath, exist_ok=True)
-    sys.path.insert(0, './submodules/face-parsing.PyTorch')
+    #sys.path.insert(0, './submodules/face-parsing.PyTorch')
+    face_parsing_ckpt_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../assets/face_parsing/model.pth'))
     from model import BiSeNet
     import torchvision.transforms as transforms
 
     n_classes = 19
     net = BiSeNet(n_classes=n_classes)
     net.to(device)
-    net.load_state_dict(torch.load(ckpt_path))
+    #net.load_state_dict(torch.load(ckpt_path))
+    net.load_state_dict(torch.load(face_parsing_ckpt_path))
     net.eval()
 
     to_tensor = transforms.Compose([
@@ -455,8 +470,8 @@ def generate_face_parsing(inputpath, savepath, ckpt_path='assets/face_parsing/mo
             if vis:
                 parsing_vis = vis_parsing_maps(image, parsing, stride=1)
                 cv2.imwrite(os.path.join(savepath, f'{name}_vis.png'), parsing_vis, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
-    sys.path.remove('./submodules/face-parsing.PyTorch')
-    sys.modules.pop('model')
+    #sys.path.remove('./submodules/face-parsing.PyTorch')
+    #sys.modules.pop('model')
     
 def generate_face_normals(inputpath, savepath, ckpt_path='assets/face_normals/model.pth', device='cuda:0'):
     logger.info(f'generae face normals')
