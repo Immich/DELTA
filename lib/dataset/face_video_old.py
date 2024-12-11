@@ -11,6 +11,7 @@ import torch
 import os
 from glob import glob
 from ..utils import rotation_converter, util
+import matplotlib.pyplot as plt
 # 'male-3-outdoor'
 
 
@@ -30,6 +31,7 @@ class NerfDataset(torch.utils.data.Dataset):
         self.beta_cache_path = os.path.join(root_dir, 'beta.pt')
         self.tex_cache_path = os.path.join(root_dir, 'tex.pt')
         self.light_cache_path = os.path.join(root_dir, 'light.pt')
+    
         if given_imagepath_list is None:
             imagepath_list = []
             if not os.path.exists(self.dataset_path):
@@ -97,11 +99,39 @@ class NerfDataset(torch.utils.data.Dataset):
         if self.load_lmk and os.path.exists(
                 os.path.join(self.dataset_path, 'landmark2d', f'{imagename}.txt')):
             lmk = np.loadtxt(os.path.join(self.dataset_path, 'landmark2d', f'{imagename}.txt'))
+            
+            #print(f"\nOriginal Landmarks (from file):\n{lmk}")
             # normalize lmk
-            lmk = torch.from_numpy(lmk).float() / self.image_size
+            #lmk = torch.from_numpy(lmk).float() / self.image_size
+            lmk = torch.from_numpy(lmk.astype(np.float32)) / self.image_size
+            #print(f"Landmarks divided by the size of img: {lmk}")
+            
+            # adjust normalization to range [-1, 1]
             lmk = lmk * 2. - 1
-            lmk = np.concatenate([lmk, np.ones([lmk.shape[0], 1])], axis=-1)
+            #print(f"Normalized Landmarks ([-1, 1] range):\n{lmk}")
+
+            # add a third coord (homogeneous coord)
+            lmk = torch.cat([lmk, torch.ones([lmk.shape[0], 1])], dim=-1)
+            # lmk = np.concatenate([lmk, np.ones([lmk.shape[0], 1])], axis=-1)
+            
             data['lmk'] = lmk
+            #print(f"Landmarks with homogeneous coords:\n{data['lmk']}")
+
+            if isinstance(lmk, np.ndarray):
+                lmk = torch.tensor(lmk, dtype=torch.float32)
+            image_np = image[:3].numpy().transpose(1, 2, 0)  # convert to HWC for viz
+            plt.imshow(image_np)
+            plt.scatter(
+                # converting the normalized values back into pixel coords
+                ((lmk[:, 0] + 1) * self.image_size / 2).numpy(),
+                ((lmk[:, 1] + 1) * self.image_size / 2).numpy(),
+                color='red',
+                label='Landmarks'
+            )
+            plt.title("Landmarks debug viz")
+            plt.legend()
+            plt.show()
+
             ## iris
             iris = np.loadtxt(os.path.join(self.dataset_path, 'iris', f'{imagename}.txt'))
             # normalize lmk
@@ -109,6 +139,8 @@ class NerfDataset(torch.utils.data.Dataset):
             iris[:,:2] = iris[:,:2] / self.image_size
             iris[:,:2] = iris[:,:2] * 2. - 1
             data['iris'] = iris
+            #data['iris'] = torch.cat([iris, torch.ones([iris.shape[0], 1])], dim=-1)
+            #print(f"Iris:\n{data['iris']}")
 
         # --- load camera and pose
         # pkl_file = os.path.join(self.dataset_path, 'smplx_all_id', f'{imagename}_param.pkl')
